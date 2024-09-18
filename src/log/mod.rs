@@ -1,4 +1,12 @@
 pub mod write;
+pub mod prelude{
+    pub use super::*;
+    pub use super::write::*;
+    pub use crate::marco_warn as warn;
+    pub use crate::marco_error as error;
+    pub use crate::marco_log as log;
+}
+
 use std::{cmp, io, sync::{Arc, Mutex, OnceLock}};
 
 #[derive(Default, PartialEq, Eq, PartialOrd)]
@@ -26,8 +34,20 @@ impl cmp::Ord for Level {
 }
 
 pub trait Logger {
-    fn log(&mut self, msg: String, level: Level) -> io::Result<()>;
+    fn write(&mut self, msg: String, level: Level) -> io::Result<()>;
     fn clear(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn log(&mut self, msg: String) -> io::Result<()>{
+        self.write(msg, Level::Log)
+    }
+
+    fn error(&mut self, msg: String) -> io::Result<()>{
+        self.write(msg, Level::Error)
+    }
+
+    fn warn(&mut self, msg: String) -> io::Result<()>{
+        self.write(msg, Level::Warning)
+    }
 }
 
 // temporal name
@@ -60,8 +80,35 @@ pub fn write(msg: String, level: Level) -> io::Result<()>{
     }
 
     match &mut out.logger{
-        Some(s) => s.log(msg, level) ,
+        Some(s) => s.write(msg, level) ,
         _ => Ok(()),
+    }
+}
+
+// damn rust this kinda sucks
+pub mod macros{
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! marco_log {
+        ($fmt: tt $(, $params: expr)*) => {
+            super::log::log(format!($fmt $(,$params)*))
+        };
+    }
+    
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! marco_error {
+        ($fmt: tt $(, $params: expr)*) => {
+            super::log::error (format!($fmt $(,$params)*))
+        };
+    }
+
+    #[macro_export]
+    #[doc(hidden)]
+    macro_rules! marco_warn {
+        ($fmt: tt $(, $params: expr)*) => {
+            super::log::warn(format!($fmt $(,$params)*))
+        };
     }
 }
 
@@ -69,22 +116,4 @@ pub fn   log(msg: String) -> io::Result<()> { write(msg, Level::Log) }
 pub fn  warn(msg: String) -> io::Result<()> { write(msg, Level::Warning) }
 pub fn error(msg: String) -> io::Result<()> { write(msg, Level::Error) }
 
-#[macro_export]
-macro_rules! log {
-    ($fmt: tt $(, $params: expr)*) => {
-        log::log(format!($fmt $(,$params)*))
-    };
-}
 
-#[macro_export]
-macro_rules! error {
-    ($fmt: tt $(, $params: expr)*) => {
-        log::error (format!($fmt $(,$params)*))
-    };
-}
-#[macro_export]
-macro_rules! warn {
-    ($fmt: tt $(, $params: expr)*) => {
-        log::warn(format!($fmt $(,$params)*))
-    };
-}

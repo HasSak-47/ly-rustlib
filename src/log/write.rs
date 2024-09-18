@@ -38,7 +38,7 @@ impl ANSI {
 }
 
 impl Logger for ANSI {
-    fn log(&mut self, msg: String, level: super::Level) -> io::Result<()> {
+    fn write(&mut self, msg: String, level: super::Level) -> io::Result<()> {
         let mut out = stdout();
         use Level as L;
         let prefix = if !self.labels {
@@ -65,7 +65,7 @@ impl Logger for ANSI {
 }
 
 impl<T> Logger for T where T : io::Write{
-    fn log(&mut self, msg: String, _level: super::Level) -> io::Result<()> {
+    fn write(&mut self, msg: String, _level: super::Level) -> io::Result<()> {
         self.write_all(msg.as_bytes())
     }
 }
