@@ -2,9 +2,8 @@ pub mod write;
 pub mod prelude{
     pub use super::*;
     pub use super::write::*;
-    pub use crate::marco_warn as warn;
-    pub use crate::marco_error as error;
-    pub use crate::marco_log as log;
+    pub use super::macros::*;
+
 }
 
 use std::{cmp, io, sync::{Arc, Mutex, OnceLock}};
@@ -110,6 +109,10 @@ pub mod macros{
             super::log::warn(format!($fmt $(,$params)*))
         };
     }
+
+    pub use crate::marco_warn as warn;
+    pub use crate::marco_error as error;
+    pub use crate::marco_log as log;
 }
 
 pub fn   log(msg: String) -> io::Result<()> { write(msg, Level::Log) }
