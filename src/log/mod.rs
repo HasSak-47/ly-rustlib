@@ -1,8 +1,8 @@
 pub mod write;
 pub mod prelude{
-    pub use super::*;
-    pub use super::write::*;
-    pub use super::macros::*;
+    pub use crate::log::*;
+    pub use crate::log::write::*;
+    pub use crate::log::macros::*;
 
 }
 
@@ -86,11 +86,12 @@ pub fn write(msg: String, level: Level) -> io::Result<()>{
 
 // damn rust this kinda sucks
 pub mod macros{
+
     #[macro_export]
     #[doc(hidden)]
     macro_rules! marco_log {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::log(format!($fmt $(,$params)*))
+            log_f(format!($fmt $(,$params)*))
         };
     }
     
@@ -98,7 +99,7 @@ pub mod macros{
     #[doc(hidden)]
     macro_rules! marco_error {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::error (format!($fmt $(,$params)*))
+            error_f(format!($fmt $(,$params)*))
         };
     }
 
@@ -106,7 +107,7 @@ pub mod macros{
     #[doc(hidden)]
     macro_rules! marco_warn {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::warn(format!($fmt $(,$params)*))
+            warn_f(format!($fmt $(,$params)*))
         };
     }
 
@@ -115,8 +116,8 @@ pub mod macros{
     pub use crate::marco_log as log;
 }
 
-pub fn   log(msg: String) -> io::Result<()> { write(msg, Level::Log) }
-pub fn  warn(msg: String) -> io::Result<()> { write(msg, Level::Warning) }
-pub fn error(msg: String) -> io::Result<()> { write(msg, Level::Error) }
+pub fn   log_f(msg: String) -> io::Result<()> { write(msg, Level::Log) }
+pub fn  warn_f(msg: String) -> io::Result<()> { write(msg, Level::Warning) }
+pub fn error_f(msg: String) -> io::Result<()> { write(msg, Level::Error) }
 
 
