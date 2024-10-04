@@ -2,10 +2,22 @@ use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::{parse_macro_input, spanned::Spanned, Attribute, DeriveInput, FieldsNamed, Ident, Type};
 
-#[proc_macro_derive(Builder, attributes(builder))]
-pub fn builder_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream{
-    println!("{input}");
-    let DeriveInput {ident, data, attrs, ..}= parse_macro_input!(input);
+#[proc_macro_attribute]
+pub fn builder(attr: proc_macro::TokenStream ,input: proc_macro::TokenStream) -> proc_macro::TokenStream{
+    let attr : TokenStream = attr.into();
+    let DeriveInput {mut ident, data, attrs, ..} = parse_macro_input!(input);
+    let attr : Vec<_> = attr.into_iter().collect();
+    if attr.len() != 0{
+        match &attr[0]{
+            TokenTree::Ident(idnt) => {
+                ident = idnt.clone();
+            },
+            _ => {},
+        }
+    }
+    else{
+        ident = format_ident!("{ident}Builder");
+    }
 
     let builder = match data {
         syn::Data::Struct(s) => match s.fields{
@@ -16,7 +28,6 @@ pub fn builder_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         }
         _ => quote!{},
     };
-    println!("{builder}");
     return builder.into();
 }
 
@@ -26,7 +37,7 @@ enum DefaultOption{
     DefaultTrait,
     Skip,
     SpecifiedFunction(Ident),
-    SpecifiedValue(Ident),
+    _SpecifiedValue(Ident),
 }
 
 enum Pair<A, B>{
@@ -94,14 +105,13 @@ fn new(name: Ident, f: FieldsNamed, attrs: Vec<Attribute>) -> TokenStream{
         fields.push((field.ident.clone(), field.ty.clone(), option));
     }
 
-    let name = format_ident!("{name}Builder");
     let (names, types) : (Vec<_>, Vec<_>)= fields.iter().map(|f| (f.0.clone(), f.1.clone())).unzip();
 
     let (sets, inits) : (Vec<_>, Vec<_>) = fields.into_iter().map(|f| (build_field_set(&f.0, &f.1), build_init(&f.0, &f.1, f.2))).unzip();
 
     let struct_declaration = quote!{
         struct #name{
-            #(#names : #types),*
+            #(pub #names : #types),*
         }
     };
 
@@ -139,7 +149,7 @@ fn build_init(ident: &Option<Ident>, ty: &Type, opt: DefaultOption) -> TokenStre
         DefaultOption::SpecifiedFunction(func) => quote!{
             #ident: #func()
         },
-        DefaultOption::SpecifiedValue(val) => quote!{
+        DefaultOption::_SpecifiedValue(val) => quote!{
             #ident: #val.clone()
         },
         DefaultOption::Skip => unreachable!(),
