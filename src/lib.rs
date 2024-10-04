@@ -1,4 +1,7 @@
 pub mod log;
+pub mod proc{
+    pub use util_macros::*;
+}
 
 mod main_test{
     #[test]

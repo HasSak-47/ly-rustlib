@@ -110,7 +110,7 @@ fn new(name: Ident, f: FieldsNamed, attrs: Vec<Attribute>) -> TokenStream{
     let (sets, inits) : (Vec<_>, Vec<_>) = fields.into_iter().map(|f| (build_field_set(&f.0, &f.1), build_init(&f.0, &f.1, f.2))).unzip();
 
     let struct_declaration = quote!{
-        struct #name{
+        pub struct #name{
             #(pub #names : #types),*
         }
     };
