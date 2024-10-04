@@ -1,24 +1,16 @@
-use std::iter::zip;
-
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::{parse_macro_input, spanned::Spanned, Attribute, DeriveInput, FieldsNamed, Ident, Type};
 
 #[proc_macro_derive(Builder, attributes(builder))]
 pub fn builder_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream{
-    let DeriveInput {ident, data, ..}= parse_macro_input!(input);
+    println!("{input}");
+    let DeriveInput {ident, data, attrs, ..}= parse_macro_input!(input);
 
     let builder = match data {
         syn::Data::Struct(s) => match s.fields{
             syn::Fields::Named(named) => {
-                let k = BuilderBuilder::new(ident.clone(), named);
-                match k{
-                    Pair::B(b) => {
-                        return b.into();
-                    },
-                    _ => {},
-                }
-                quote!{}
+                new(ident.clone(), named, attrs)
             },
             _ => quote!{},
         }
@@ -32,14 +24,9 @@ pub fn builder_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 enum DefaultOption{
     #[default]
     DefaultTrait,
+    Skip,
     SpecifiedFunction(Ident),
     SpecifiedValue(Ident),
-}
-
-// god I should not code drunk
-struct BuilderBuilder{
-    name  : Ident,
-    fields: Vec<(Option<Ident>, Type, DefaultOption)>,
 }
 
 enum Pair<A, B>{
@@ -47,119 +34,91 @@ enum Pair<A, B>{
     B(B)
 }
 
-impl BuilderBuilder{
-    fn prosses_attr(attr: Attribute) -> Pair<Option<DefaultOption>, TokenStream>{
-        let tokens: Vec<TokenTree> = match attr.parse_args::<TokenStream>(){
-            Ok(k) => k,
-            _ => return Pair::B(quote_spanned!(attr.span() => "could not parse args")),
-        }.into_iter().collect();
-        match tokens.len(){
-            1 => {
-                if tokens[0].to_string() == "skip"{
-                    Pair::A(None)
-                }
-                else{
-                    Pair::B(quote_spanned!(attr.span() => "invalid argument"))
-                }
-            }
-            2 => {
-                Pair::B(quote_spanned!(attr.span() => "I don't know what you are trying to say"))
-            }
-            3 => {
-                match (&tokens[0], &tokens[2]){
-                    (TokenTree::Ident(option), TokenTree::Ident(function)) => {
-                        if option.to_string() == "default"{
-                            Pair::A(Some(DefaultOption::SpecifiedFunction(function.clone())))
-                        }
-                        else{
-                            Pair::B(quote_spanned!(attr.span() => "unknown option"))
-                        }
-                    },
-                    _ => Pair::B(quote_spanned!(attr.span() => "invalid argument")),
-                }
-            }
-            _ => return Pair::B(quote_spanned!(attr.span() => "too many tokens!")),
-        }
-    }
-    fn new(name: Ident, f: FieldsNamed) -> Pair<Self, TokenStream>{
-        let mut fields = Vec::new();
-        'field_iter : for field in &f.named{
-            let option = DefaultOption::DefaultTrait;
-            fields.push((field.ident.clone(), field.ty.clone(), option));
-        }
-
-
-        return Pair::A(Self{
-            name,
-            fields,
-        })
-    }
+macro_rules! proc_error {
+    ($error: literal , $var: expr ) => {
+        quote_spanned!($var.span() => compile_error!($error))
+        
+    };
 }
-/*
-fn build_fields(name: &Ident, f: FieldsNamed) -> TokenStream {
-    let (function, inits) : (Vec<_>, Vec<_>)= f.named.iter().filter(|f|{
-        let mut skip = true;
-        for attr in f.attrs.iter(){
-            let args : proc_macro2::TokenStream = attr.parse_args().unwrap();
-            let parts : Vec<_> = args.into_iter().collect();
 
-            if &parts[0].to_string() == "skip"{
-                skip = false;
-                break;
+fn prosses_attr(attr: &Attribute) -> Pair<DefaultOption, TokenStream>{
+    let tokens: Vec<TokenTree> = match attr.parse_args::<TokenStream>(){
+        Ok(k) => k,
+        _ => return Pair::B(proc_error!("could not parse args", attr)),
+    }.into_iter().collect();
+    match tokens.len(){
+        1 => {
+            if tokens[0].to_string() == "skip"{
+                Pair::A(DefaultOption::Skip)
+            }
+            else{
+                Pair::B(proc_error!("Builder: Unknown argument", tokens[0].span() ))
             }
         }
-        skip
-    }).map(|f|{
-        let (f_name, f_ty) = (&f.ident, &f.ty);
-        let mut def_opts =  DefaultOption::DefaultTrait;
-        for attr in f.attrs.iter() {
-            let args : proc_macro2::TokenStream = attr.parse_args().unwrap();
-            let parts : Vec<_> = args.into_iter().collect();
-            use TokenTree as TT;
-            match (&parts[0], &parts[2]){
-                (TT::Ident(def), TT::Ident(data)) => {
-                    if def.to_string() == "default"{
-                        def_opts = DefaultOption::SpecifiedFunction(data.clone())
+        2 => {
+            Pair::B(proc_error!("I don't know what you are trying to say", attr))
+        }
+        3 => {
+            match (&tokens[0], &tokens[2]){
+                (TokenTree::Ident(option), TokenTree::Ident(function)) => {
+                    if option.to_string() == "default"{
+                        Pair::A(DefaultOption::SpecifiedFunction(function.clone()))
+                    }
+                    else{
+                        Pair::B(proc_error!("Unknown option", option))
                     }
                 },
-                _ => {},
-            };
-        }
-        (build_field(f_name, f_ty), build_new(f_name, f_ty, def_opts))
-    }).unzip();
-
-    let name = format_ident!("{}Builder", name);
-    
-    let definition = quote!{
-    },
-
-    let initer = quote!{
-        fn new() -> Self{
-            Self{
-                #(#inits),*
+                _ => Pair::B(proc_error!("Invalid argument", attr)),
             }
+        }
+        _ => return Pair::B(proc_error!("Too many tokens!", attr)),
+    }
+}
+fn new(name: Ident, f: FieldsNamed, attrs: Vec<Attribute>) -> TokenStream{
+    let mut fields = Vec::new();
+    for field in &f.named{
+        let mut option = DefaultOption::DefaultTrait;
+        for attr in &field.attrs{
+            if attr.meta.path().to_token_stream().to_string() != "builder" {
+                continue;
+            }
+            option = match prosses_attr(attr){
+                Pair::A(a) => a,
+                Pair::B(b) => return b,
+            };
+            break;
+        }
+        if let  DefaultOption::Skip = option {
+            continue;
+        }
+        fields.push((field.ident.clone(), field.ty.clone(), option));
+    }
+
+    let name = format_ident!("{name}Builder");
+    let (names, types) : (Vec<_>, Vec<_>)= fields.iter().map(|f| (f.0.clone(), f.1.clone())).unzip();
+
+    let (sets, inits) : (Vec<_>, Vec<_>) = fields.into_iter().map(|f| (build_field_set(&f.0, &f.1), build_init(&f.0, &f.1, f.2))).unzip();
+
+    let struct_declaration = quote!{
+        struct #name{
+            #(#names : #types),*
+        }
+    };
+
+    let implementation = quote!{
+        impl #name {
+            pub fn new() -> Self{ Self{
+                #(#inits),*
+            }}
+            #(#sets)*
         }
     };
 
 
-    let implementations = quote!{impl #name {
-        #initer
-        #(#function)*
-    }};
-
-    return implementations.into();
+    return quote!(#(#attrs)* #struct_declaration #implementation);
 }
 
-fn build_field(ident: &Option<Ident>, ty: &Type) -> TokenStream{
-    quote!{
-        pub fn #ident(mut self, #ident: #ty) -> Self{
-            self.#ident= #ident;
-            return self;
-        }
-    }
-}
-
-fn build_new(ident: &Option<Ident>, ty: &Type, opt: DefaultOption) -> TokenStream{
+fn build_init(ident: &Option<Ident>, ty: &Type, opt: DefaultOption) -> TokenStream{
     match opt{
         DefaultOption::DefaultTrait => {
             let typ = match ty.clone(){
@@ -183,6 +142,15 @@ fn build_new(ident: &Option<Ident>, ty: &Type, opt: DefaultOption) -> TokenStrea
         DefaultOption::SpecifiedValue(val) => quote!{
             #ident: #val.clone()
         },
+        DefaultOption::Skip => unreachable!(),
     }
 }
-*/
+
+fn build_field_set(ident: &Option<Ident>, ty: &Type) -> TokenStream{
+    quote!{
+        pub fn #ident(mut self, #ident: #ty) -> Self{
+            self.#ident= #ident;
+            return self;
+        }
+    }
+}
