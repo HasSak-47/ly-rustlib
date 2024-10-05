@@ -2,7 +2,7 @@ use core::panic;
 
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Eq, Pound}, Attribute, Data, DeriveInput, ExprGroup, Field, FieldsNamed, Ident, Path, Token, Type, Visibility};
+use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Comma, Eq, Pound}, Attribute, Data, DeriveInput, Expr, ExprGroup, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Stmt, Token, Type, Visibility};
 
 macro_rules! proc_error {
     ($error: literal , $var: expr ) => {
@@ -10,8 +10,11 @@ macro_rules! proc_error {
         
     };
 }
-pub fn builder(attr: TokenStream, input: TokenStream) -> TokenStream {
-    proc_error!("idk man", attr)
+
+pub fn builder(attr: TokenStream, input: TokenStream) -> Resul<TokenStream> {
+    let str : DeriveInput = parse2(input)?;
+
+    return Err("not implemented :3");
 }
 
 // #[builder(skip | ( type & ( builder ) & pass(attrs)) )]
@@ -20,79 +23,106 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> TokenStream {
 enum Param{
     Skip,
     Build{
-        name: Ident,
-        ty: TokenStream,
+        ident: Ident,
+        ty: Type,
         builder: ParamBuilder,
-        attrs: Vec<Attribute>
+        attrs  : Vec<Attribute>,
     }
+}
+
+enum ParamBuilder {
+    Impl,
+    Expr(Expr),
+}
+
+struct ParamAttrParser(Vec<(Path, Expr)>);
+
+impl Parse for ParamAttrParser{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        use syn::ext::IdentExt;
+        let mut v = Vec::new();
+
+        while input.lookahead1().peek(Ident::peek_any) {
+            let MetaNameValue {path, value, ..} = input.parse()?; 
+            let r : Result<Comma, _> = input.parse();
+            v.push((path, value));
+            if r.is_err(){
+                break;
+            }
+        }
+
+        return Ok(Self(v));
+    }
+
 }
 
 impl Parse for Param{
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_inner(input)?;
-        let _field = Field::parse_named(input)?;
-        for attr in attrs {
-            let _ = attr.parse_args_with(ParamBuilder::parse);
+        let Field {attrs, mut ty, ident, ..}= Field::parse_named(input)?;
+        let mut ident = ident.unwrap();
+
+        let builder_attr = attrs.iter().find(|f| if let Meta::List(MetaList{path, ..}) = &f.meta {
+            path.is_ident("builder")
+        } else {
+            false
+        });
+
+        let p_attrs = match builder_attr{
+            Some(t) => {
+                t.parse_args_with(ParamAttrParser::parse)?
+            },
+            None => {
+                ParamAttrParser(Vec::new())
+            },
+        };
+
+        let mut builder = ParamBuilder::Impl;
+        for attr in p_attrs.0{
+            if attr.0.is_ident("skip"){
+                println!("skip");
+                return Ok(Self::Skip);
+            }
+            if attr.0.is_ident("name"){
+                println!("name");
+                ident = parse2(attr.1.to_token_stream())?;
+                continue;
+            }
+            if attr.0.is_ident("def_expr"){
+                println!("expr");
+                builder = ParamBuilder::Expr(attr.1);
+                continue;
+            }
+            if attr.0.is_ident("ty"){
+                println!("ty");
+                ty = parse2(attr.1.to_token_stream())?;
+                continue;
+            }
+            if attr.0.is_ident("pass"){
+                println!("pass");
+                continue;
+            }
         }
 
-        return Err(syn::Error::new(input.span(), "invalid sequence"));
+        println!("return");
+        return Ok(Self::Build{
+            builder,
+            attrs,
+            ty,
+            ident,
+        });
     }
 }
 
 #[test]
 fn test_param(){
     let _ : Param = parse2(quote! {
-        #[builder(def_v = String::from("text") ty = String, pass(#[serde(skip)]))]
-        param: std::Vec
+        #[serde(skip)]
+        #[builder(def_expr = String::from("text"), ty = String, pass = (serde(skip)) )]
+        bytes: std::Vec<u8>
+    }).unwrap();
+    let _ : Param = parse2(quote! {
+        #[builder(def_expr = String::from("text"), ty = String, pass = (serde(skip)) )]
+        #[serde(skip)]
+        bytes: std::Vec<u8>
     }).unwrap();
 }
-
-// should be something in specific like String::from("test") or just Default::default(),
-enum ParamBuilder{
-    Value(TokenStream),
-    Trait,
-}
-
-impl Parse for ParamBuilder{
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let ident : Ident = input.parse()?; 
-        let ident = ident.to_string();
-        if ident == "def_val"{
-            let _ : Eq = input.parse()?;
-            let value : TokenStream  = input.parse()?;
-            return Ok(Self::Value(value))
-        }
-        if ident == "def_impl"{
-            return Ok(Self::Trait);
-        }
-        return Err(syn::Error::new(input.span(), "invalid option"));
-    }
-}
-
-struct Parameter{
-    param: Ident,
-    ty: Type,
-}
-
-/*
-#[builder(name = Task,
-    #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-)]
-#[derive(Debug, Default, Clone)]
-pub struct TaskTable{
-    pub(crate) desc: Description,
-    pub(crate) done: bool,
-
-    // minimun time needed to perform the task min_time   : time::Duration,
-    pub(crate) min_time: Duration,
-
-    #[builder(other_type = Option<String>)]
-    pub(crate) parent_task: Option<usize>,
-
-    #[builder(other_type = Option<String>)]
-    pub(crate) project    : Option<usize>,
-
-    #[builder(skip)]
-    pub(crate) id : usize,
-}
-*/
