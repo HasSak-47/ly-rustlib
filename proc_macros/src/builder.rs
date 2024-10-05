@@ -11,8 +11,9 @@ macro_rules! proc_error {
     };
 }
 
-pub fn builder(attr: TokenStream, input: TokenStream) -> Resul<TokenStream> {
+pub fn builder(attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
     let str : DeriveInput = parse2(input)?;
+
 
     return Err("not implemented :3");
 }
