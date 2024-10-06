@@ -4,15 +4,37 @@ use proc_macro2::{TokenStream, TokenTree};
 use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
 use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Comma, Eq, Paren, Pound}, Attribute, Data, DeriveInput, Expr, ExprGroup, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Stmt, Token, Type, Visibility};
 
-macro_rules! proc_error {
-    ($error: literal , $var: expr ) => {
-        quote_spanned!($var.span() => compile_error!($error))
-        
-    };
-}
-
 pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let span = input.span();
+    let mut derived : DeriveInput = parse2(input.clone())?;
+    match &mut derived.data{
+        Data::Struct(d) => {
+            for field in &mut d.fields{
+                field.attrs = field.attrs.clone().into_iter().filter(|p| {
+                    println!("field: {}", p.to_token_stream().to_string());
+                    match &p.meta{
+                        Meta::Path (p)  => {
+                            println!("path : {}", p.to_token_stream().to_string());
+                            if p.is_ident("builder") || p.is_ident("builder_pass"){
+                                return false; 
+                            }
+                        }
+                        Meta::List(l)  => {
+                            if l.path.is_ident("builder_skip"){
+                                return false;
+                            }
+                        }
+                        _ => { }
+                    }
+                    return true;
+                }).collect();
+            }
+        },
+        _ => {
+            return Err(syn::Error::new(span, "expected data struct"));
+        }
+
+    }
     let DeriveInput {mut ident, data, attrs, ..}= parse2(input)?;
 
     // parse the attr of the struct
@@ -54,6 +76,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
     let sets : Vec<_> = fields.iter().map(FieldSet::from).collect();
 
     return Ok(quote!{
+        #derived
         #(#attrs)*
         pub struct #ident{
             #(#fields),*
@@ -213,7 +236,7 @@ impl Parse for FieldOptions{
         // if #[builder_skip] skip
         // note it will be changed at some point to #[builder(skip)]
         if attrs.iter().find(|f|
-            if let Meta::List(MetaList{path, ..}) = &f.meta {
+            if let Meta::Path(path) = &f.meta {
                 path.is_ident("builder_skip")
             } else {
                 false
