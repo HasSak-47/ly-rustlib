@@ -297,19 +297,6 @@ impl Parse for FieldOptions{
     }
 }
 
-struct FieldArgParser(Vec<Attribute>);
-
-impl Parse for FieldArgParser{
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let span = input.span();
-        let exps : syn::ExprParen = input.parse()?;
-        let exp = exps.expr.to_token_stream();
-
-
-        return Err(syn::Error::new(span, "not implemented :)"));
-    }
-}
-
 #[test]
 fn test_param(){
     let _ : FieldOptions = parse2(quote! {
