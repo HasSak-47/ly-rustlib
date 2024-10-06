@@ -1,8 +1,8 @@
-use core::panic;
 
-use proc_macro2::{TokenStream, TokenTree};
-use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
-use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Comma, Eq, Paren, Pound}, Attribute, Data, DeriveInput, Expr, ExprGroup, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Stmt, Token, Type, Visibility};
+
+use proc_macro2::{TokenStream};
+use quote::{quote, ToTokens};
+use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, token::{Comma}, Data, DeriveInput, Expr, Field, Ident, Meta, MetaList, MetaNameValue, Path, Type};
 
 pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let span = input.span();
@@ -104,7 +104,7 @@ impl ToTokens for NewField{
         let attr = &self.attrs;
         let ident = &self.ident;
         let ty    = &self.ty;
-        let k : Vec<_> = attr.iter().map(|f| {return f.to_token_stream().to_string()} ).collect();
+        let _k : Vec<_> = attr.iter().map(|f| {return f.to_token_stream().to_string()} ).collect();
         quote!(
             #(#[#attr])*
             #ident: #ty
