@@ -182,6 +182,7 @@ impl ToTokens for FieldSet{
     }
 }
 
+// in charge of seprarating all the options in #[builder(opt, ...)]
 struct FieldAttrParser(Vec<(Path, Expr)>);
 
 impl Parse for FieldAttrParser{
@@ -209,6 +210,17 @@ impl Parse for FieldOptions{
         let Field {attrs, mut ty, ident, ..}= Field::parse_named(input)?;
         let mut ident = ident.unwrap();
 
+        // if #[builder_skip] skip
+        // note it will be changed at some point to #[builder(skip)]
+        if attrs.iter().find(|f|
+            if let Meta::List(MetaList{path, ..}) = &f.meta {
+                path.is_ident("builder_skip")
+            } else {
+                false
+        }).is_some(){
+            return Ok(FieldOptions::Skip);
+        }
+
         // parse all #[builder(...)]
         let builder_attr = attrs.iter().find(|f|
             if let Meta::List(MetaList{path, ..}) = &f.meta {
@@ -228,9 +240,6 @@ impl Parse for FieldOptions{
 
         let mut builder = FieldIniter::Impl;
         for attr in p_attrs.0{
-            if attr.0.is_ident("skip"){
-                return Ok(Self::Skip);
-            }
             if attr.0.is_ident("name"){
                 ident = parse2(attr.1.to_token_stream())?;
                 continue;
