@@ -13,7 +13,6 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
                 field.attrs = field.attrs.clone().into_iter().filter(|p| {
                     match &p.meta{
                         Meta::Path (p)  => {
-                            println!("path : {}", p.to_token_stream().to_string());
                             if p.is_ident("builder_skip") {
                                 return false; 
                             }
