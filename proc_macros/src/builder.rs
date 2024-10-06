@@ -1,8 +1,8 @@
 use core::panic;
 
 use proc_macro2::{TokenStream, TokenTree};
-use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Comma, Eq, Pound}, Attribute, Data, DeriveInput, Expr, ExprGroup, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Stmt, Token, Type, Visibility};
+use quote::{format_ident, quote, quote_spanned, ToTokens, TokenStreamExt};
+use syn::{parse::{Parse, ParseStream}, parse2, parse_macro_input, spanned::Spanned, token::{Bracket, Colon, Comma, Eq, Paren, Pound}, Attribute, Data, DeriveInput, Expr, ExprGroup, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Stmt, Token, Type, Visibility};
 
 macro_rules! proc_error {
     ($error: literal , $var: expr ) => {
@@ -11,34 +11,180 @@ macro_rules! proc_error {
     };
 }
 
-pub fn builder(attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
-    let str : DeriveInput = parse2(input)?;
+pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
+    let span = input.span();
+    let DeriveInput {mut ident, data, attrs, ..}= parse2(input)?;
 
+    // parse the attr of the struct
+    let attr_fields : FieldAttrParser = parse2(attr)?;
+    for field in attr_fields.0{
+        if field.0.is_ident("name") {
+            ident = parse2(field.1.into_token_stream())?;
+        }
+    }
 
-    return Err("not implemented :3");
+    // get the field of the struct
+    let fields = match data{
+        Data::Struct(d) => {
+            d.fields
+        },
+        _ => {
+            return Err(syn::Error::new(span, "expected data struct"));
+        }
+    };
+
+    let mut v = Vec::new();
+
+    for field in fields{
+        // parse the field and the attrs
+        let new_field : FieldOptions = parse2( field.to_token_stream() )?;
+        match &new_field{
+            FieldOptions::Skip => { continue; },
+            _ => {},
+        }
+        v.push(new_field);
+    }
+    let (fields, initers) : (Vec<_>, Vec<_>)= v.into_iter().map(|field| return match field {
+        FieldOptions::Build { ident, ty, initer, attrs } => {
+            (NewField{attrs, ty, ident: ident.clone()}, Init{initer, ident})
+        },
+        _ => unreachable!(),
+    }).unzip();
+
+    let sets : Vec<_> = fields.iter().map(FieldSet::from).collect();
+
+    return Ok(quote!{
+        #(#[#attrs])*
+        pub struct #ident{
+            #(#fields),*
+        }
+
+        impl #ident{
+            fn new() -> Self{
+                Self{
+                    #(#initers),*
+                }
+            }
+
+            #(#sets)*
+        }
+    });
+}
+
+struct NewField{
+    attrs  : Vec<TokenStream>,
+    ident  : Ident,
+    ty     : Type,
+}
+
+impl ToTokens for NewField{
+    fn to_token_stream(&self) -> TokenStream {
+        let attr = &self.attrs;
+        let ident = &self.ident;
+        let ty    = &self.ty;
+        let k : Vec<_> = attr.iter().map(|f| {return f.to_token_stream().to_string()} ).collect();
+        quote!(
+            #(#[#attr])*
+            #ident: #ty
+        )
+    }
+
+    fn into_token_stream(self) -> TokenStream{
+        self.to_token_stream()
+    }
+
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ts = self.to_token_stream();
+        tokens.extend(ts);
+    }
 }
 
 // #[builder(skip | ( type & ( builder ) & pass(attrs)) )]
 // #[builder(skip | ( ty = Ty & (value = val | def_impl) & attrs(#[...])) )]
 // param: type,
-enum Param{
+enum FieldOptions{
     Skip,
     Build{
         ident: Ident,
         ty: Type,
-        builder: ParamBuilder,
-        attrs  : Vec<Attribute>,
+        initer: FieldIniter,
+        attrs  : Vec<TokenStream>,
     }
 }
 
-enum ParamBuilder {
+struct Init{
+    ident: Ident,
+    initer: FieldIniter,
+}
+
+enum FieldIniter {
     Impl,
     Expr(Expr),
 }
 
-struct ParamAttrParser(Vec<(Path, Expr)>);
+struct FieldSet{
+    ident: Ident,
+    ty: Type,
+}
 
-impl Parse for ParamAttrParser{
+impl ToTokens for Init{
+    fn to_token_stream(&self) -> TokenStream {
+        let init = match &self.initer{
+            FieldIniter::Impl => quote!{ Default::default() },
+            FieldIniter::Expr(expr) => quote!{ #expr }
+        };
+        let ident = &self.ident;
+
+        quote!(
+            #ident: #init
+        )
+    }
+
+    fn into_token_stream(self) -> TokenStream{
+        self.to_token_stream()
+    }
+
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ts = self.to_token_stream();
+        tokens.extend(ts);
+    }
+}
+
+impl From<&NewField> for FieldSet{
+    fn from(value: &NewField) -> Self {
+        Self{
+            ident: value.ident.clone(),
+            ty: value.ty.clone(),
+        }
+    }
+}
+
+impl ToTokens for FieldSet{
+    fn to_token_stream(&self) -> TokenStream {
+        let ident = &self.ident;
+        let ty = &self.ty;
+
+        quote!(
+            pub fn #ident(mut self, #ident: #ty) -> Self{
+                self.#ident = #ident;
+                return self;
+            }
+        )
+    }
+
+    fn into_token_stream(self) -> TokenStream{
+        self.to_token_stream()
+    }
+
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let ts = self.to_token_stream();
+        tokens.extend(ts);
+    }
+}
+
+struct FieldAttrParser(Vec<(Path, Expr)>);
+
+impl Parse for FieldAttrParser{
     fn parse(input: ParseStream) -> syn::Result<Self> {
         use syn::ext::IdentExt;
         let mut v = Vec::new();
@@ -57,56 +203,62 @@ impl Parse for ParamAttrParser{
 
 }
 
-impl Parse for Param{
+// parse #[attr] ident: ty
+impl Parse for FieldOptions{
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let Field {attrs, mut ty, ident, ..}= Field::parse_named(input)?;
         let mut ident = ident.unwrap();
 
-        let builder_attr = attrs.iter().find(|f| if let Meta::List(MetaList{path, ..}) = &f.meta {
-            path.is_ident("builder")
-        } else {
-            false
+        // parse all #[builder(...)]
+        let builder_attr = attrs.iter().find(|f|
+            if let Meta::List(MetaList{path, ..}) = &f.meta {
+                path.is_ident("builder")
+            } else {
+                false
         });
 
         let p_attrs = match builder_attr{
             Some(t) => {
-                t.parse_args_with(ParamAttrParser::parse)?
+                t.parse_args_with(FieldAttrParser::parse)?
             },
             None => {
-                ParamAttrParser(Vec::new())
+                FieldAttrParser(Vec::new())
             },
         };
 
-        let mut builder = ParamBuilder::Impl;
+        let mut builder = FieldIniter::Impl;
         for attr in p_attrs.0{
             if attr.0.is_ident("skip"){
-                println!("skip");
                 return Ok(Self::Skip);
             }
             if attr.0.is_ident("name"){
-                println!("name");
                 ident = parse2(attr.1.to_token_stream())?;
                 continue;
             }
             if attr.0.is_ident("def_expr"){
-                println!("expr");
-                builder = ParamBuilder::Expr(attr.1);
+                builder = FieldIniter::Expr(attr.1);
                 continue;
             }
             if attr.0.is_ident("ty"){
-                println!("ty");
                 ty = parse2(attr.1.to_token_stream())?;
-                continue;
-            }
-            if attr.0.is_ident("pass"){
-                println!("pass");
                 continue;
             }
         }
 
-        println!("return");
+        // parse all #[builder_pass]
+        let attrs = attrs.into_iter()
+            .filter_map(|attr| {
+                if let Meta::List(MetaList{path, tokens, ..}) = attr.meta{
+                    if ! path.is_ident("builder_pass"){
+                        return None;
+                    }
+                    return Some(tokens); 
+                }
+                return None;
+            }).collect();
+
         return Ok(Self::Build{
-            builder,
+            initer: builder,
             attrs,
             ty,
             ident,
@@ -114,15 +266,28 @@ impl Parse for Param{
     }
 }
 
+struct FieldArgParser(Vec<Attribute>);
+
+impl Parse for FieldArgParser{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let span = input.span();
+        let exps : syn::ExprParen = input.parse()?;
+        let exp = exps.expr.to_token_stream();
+
+
+        return Err(syn::Error::new(span, "not implemented :)"));
+    }
+}
+
 #[test]
 fn test_param(){
-    let _ : Param = parse2(quote! {
+    let _ : FieldOptions = parse2(quote! {
         #[serde(skip)]
-        #[builder(def_expr = String::from("text"), ty = String, pass = (serde(skip)) )]
+        #[builder(def_expr = String::from("text"), ty = String, pass = ((serde(skip))) )]
         bytes: std::Vec<u8>
     }).unwrap();
-    let _ : Param = parse2(quote! {
-        #[builder(def_expr = String::from("text"), ty = String, pass = (serde(skip)) )]
+    let _ : FieldOptions = parse2(quote! {
+        #[builder(def_expr = String::from("text"), ty = String, pass = ((serde(skip))) )]
         #[serde(skip)]
         bytes: std::Vec<u8>
     }).unwrap();
