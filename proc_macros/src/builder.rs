@@ -11,16 +11,15 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
         Data::Struct(d) => {
             for field in &mut d.fields{
                 field.attrs = field.attrs.clone().into_iter().filter(|p| {
-                    println!("field: {}", p.to_token_stream().to_string());
                     match &p.meta{
                         Meta::Path (p)  => {
                             println!("path : {}", p.to_token_stream().to_string());
-                            if p.is_ident("builder") || p.is_ident("builder_pass"){
+                            if p.is_ident("builder_skip") {
                                 return false; 
                             }
                         }
                         Meta::List(l)  => {
-                            if l.path.is_ident("builder_skip"){
+                            if l.path.is_ident("builder_skip") || l.path.is_ident("builder"){
                                 return false;
                             }
                         }
