@@ -54,7 +54,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
     let sets : Vec<_> = fields.iter().map(FieldSet::from).collect();
 
     return Ok(quote!{
-        #(#[#attrs])*
+        #(#attrs)*
         pub struct #ident{
             #(#fields),*
         }
