@@ -81,7 +81,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
         }
 
         impl #ident{
-            fn new() -> Self{
+            pub fn new() -> Self{
                 Self{
                     #(#initers),*
                 }
