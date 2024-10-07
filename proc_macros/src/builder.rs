@@ -18,7 +18,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
                             }
                         }
                         Meta::List(l)  => {
-                            if l.path.is_ident("builder_skip") || l.path.is_ident("builder"){
+                            if l.path.is_ident("builder_pass") || l.path.is_ident("builder"){
                                 return false;
                             }
                         }
@@ -250,6 +250,7 @@ impl Parse for FieldOptions{
                 false
         });
 
+        // all the option = stmt stuff inside #[builder(...)]
         let p_attrs = match builder_attr{
             Some(t) => {
                 t.parse_args_with(FieldAttrParser::parse)?
