@@ -1,11 +1,8 @@
-use core::panic;
-use std::mem::MaybeUninit;
+use proc_macro2::TokenStream;
+use quote::{quote, ToTokens};
+use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, Attribute, Data, DeriveInput, Field, Fields, Ident, Meta, MetaList, MetaNameValue, Path, Type};
 
-use proc_macro2::{TokenStream};
-use quote::{quote, ToTokens, TokenStreamExt};
-use syn::{ext::IdentExt, parse::{self, Parse, ParseStream}, parse2, spanned::Spanned, token::Comma, Attribute, Data, DataEnum, DeriveInput, Expr, ExprParen, Field, Fields, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, PatParen, Path, Type};
-
-pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
+pub fn builder(_attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let mut di : DeriveInput = parse2(input)?;
 
     let (b_fields, o_fields) : (Vec<_>, Vec<_>,) = match di.data.clone(){
