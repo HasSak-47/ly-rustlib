@@ -2,8 +2,13 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, Attribute, Data, DeriveInput, Field, Fields, Ident, Meta, MetaList, MetaNameValue, Path, Type};
 
-pub fn builder(_attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
+pub fn parse_attr(attr: TokenStream) -> syn::Result<Ident>{
+    parse2(attr)
+}
+
+pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let mut di : DeriveInput = parse2(input)?;
+    let struct_name = parse_attr(attr)?;
 
     let (b_fields, o_fields) : (Vec<_>, Vec<_>,) = match di.data.clone(){
         Data::Struct(s) =>{
@@ -40,11 +45,11 @@ pub fn builder(_attr: TokenStream, input: TokenStream) -> syn::Result<TokenStrea
 
     let q = quote! {
         #di
-        struct TestStruct2{
+        struct #struct_name{
             #(pub #field),*
         }
 
-        impl TestStruct2 {
+        impl #struct_name {
             pub fn new() -> Self{
                 Self{ #(#initer)* }
             }
