@@ -1,5 +1,3 @@
-
-
 use proc_macro2::{TokenStream};
 use quote::{quote, ToTokens};
 use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, token::{Comma}, Data, DeriveInput, Expr, Field, Ident, Meta, MetaList, MetaNameValue, Path, Type};
