@@ -31,7 +31,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
         }
 
     }
-    let DeriveInput {mut ident, data, attrs, ..}= parse2(input)?;
+    let DeriveInput {mut ident, data, attrs, ..} = parse2(input)?;
 
     // parse the attr of the struct
     let attr_fields : FieldAttrParser = parse2(attr)?;
@@ -123,7 +123,7 @@ impl ToTokens for NewField{
 // param: type,
 enum FieldOptions{
     Skip,
-    Build{
+    Build {
         ident: Ident,
         ty: Type,
         initer: FieldIniter,

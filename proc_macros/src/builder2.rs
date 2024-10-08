@@ -2,7 +2,7 @@ use core::panic;
 
 use proc_macro2::{TokenStream};
 use quote::{quote, ToTokens};
-use syn::{ext::IdentExt, parse::{self, Parse, ParseStream}, parse2, spanned::Spanned, token::Comma, Attribute, Data, DeriveInput, Expr, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, Path, Type};
+use syn::{ext::IdentExt, parse::{self, Parse, ParseStream}, parse2, spanned::Spanned, token::Comma, Attribute, Data, DeriveInput, Expr, ExprParen, Field, FieldsNamed, Ident, Meta, MetaList, MetaNameValue, PatParen, Path, Type};
 
 pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let span = attr.span();
@@ -93,7 +93,7 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
 
     return Ok((BuilderField{
         init, ty, skip, ident, attrs
-    }, Field));
+    }, o_field));
 }
 
 enum BuilderAttr{
@@ -105,6 +105,12 @@ enum BuilderAttr{
 
 impl Parse for BuilderAttr{
     fn parse(input: ParseStream) -> syn::Result<Self> {
+        println!("{}", input.to_string());
+        // this is builder
+        let _ : Ident = input.parse()?;
+        if input.peek(syn::token::Paren){
+        }
+
         let ident : Ident = input.parse()?;
         if ident.to_string() == "skip"{
             return Ok(Self::Skip);
@@ -125,6 +131,20 @@ impl Parse for BuilderAttr{
             return Ok(Self::Type(tokens));
         }
 
-        return Err(syn::Error::new(input.span(), "unknown attr param"));
+        let error = format!("{} unknown attr", ident.to_string());
+        return Err(syn::Error::new(input.span(), error));
     }
+}
+
+#[test]
+fn test_field() {
+    let _ : BuilderAttr = parse2(quote! {
+        builder(skip)
+    }).unwrap();
+    let _ : BuilderAttr = parse2(quote! {
+        builder(init = String::from("test"))
+    }).unwrap();
+    let _ : BuilderAttr = parse2(quote! {
+        builder(init = String::from("test"))
+    }).unwrap();
 }
