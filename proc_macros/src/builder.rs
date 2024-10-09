@@ -111,7 +111,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
     let q = quote! {
         #di
         #(#[#p_attrs])*
-        struct #struct_name{
+        pub struct #struct_name{
             #(#field),*
         }
 
