@@ -9,9 +9,13 @@ pub fn builder(attr: proc_macro::TokenStream ,input: proc_macro::TokenStream) ->
 #[test]
 fn test_macro_quote() {
     use quote::quote;
-    builder::builder(quote!{builder}, quote!{
+    use prettyplease;
+    let out = builder::builder(
+        quote!{Name},
+    quote!{
     struct TestStruct{
         #[builder(skip)]
+        #[builder(init = 10)]
         id1 : usize,
         #[builder(init = String::from("test"))]
         data : String,
@@ -20,4 +24,6 @@ fn test_macro_quote() {
         #[builder(pass = serde(skip_serializing_if = "String::is_empty"))]
         string: String,
     }}).unwrap();
+
+    let out = syn::parse_file(&out.to_string()).unwrap();
 }

@@ -2,6 +2,34 @@ use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, Attribute, Data, DeriveInput, Field, Fields, Ident, Meta, MetaList, MetaNameValue, Path, Type};
 
+enum BuilderAttrs{
+    Name(Ident),
+    Pass(TokenStream),
+    SkipInit,
+}
+
+impl Parse for BuilderAttrs{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let ident = input.parse::<Ident>()?.to_string();
+        if ident == "name"{
+            let _ : syn::token::Eq = input.parse()?;
+            let name : Ident = input.parse()?;
+            return Ok(Self::Name(name));
+        }
+        if ident == "skip_init"{
+            return Ok(Self::SkipInit);
+        }
+        if ident == "pass"{
+            let _ : syn::token::Eq = input.parse()?;
+            let tokens : TokenStream = input.parse()?;
+            return Ok(Self::Pass(tokens));
+        }
+
+        let error = format!("{} unknown attr", ident.to_string());
+        return Err(syn::Error::new(input.span(), error));
+    }
+}
+
 pub fn parse_attr(attr: TokenStream) -> syn::Result<Ident>{
     parse2(attr)
 }
@@ -46,7 +74,7 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
     let q = quote! {
         #di
         struct #struct_name{
-            #(pub #field),*
+            #(#field),*
         }
 
         impl #struct_name {
@@ -79,19 +107,6 @@ impl ToTokens for Initer{
     fn into_token_stream(self) -> TokenStream { self.to_token_stream() }
 
 }
-
-/*
-impl StructBuilder {
-    fn create_struct(&self) -> syn::Result<TokenStream>{
-    }
-    fn create_field(&self) -> syn::Result<TokenStream>{
-    }
-    fn create_setter(&self) -> syn::Result<TokenStream>{
-    }
-    fn create_initer(&self) -> syn::Result<TokenStream>{
-    }
-}
-*/
 
 struct BuilderField{
     attrs: Vec<TokenStream>,
@@ -128,7 +143,7 @@ impl BuilderField{
         let ty    = &self.ty;
         quote! {
             #(#[#attrs])*
-            #ident : #ty
+            pub #ident : #ty
         }
     }
 }
@@ -195,45 +210,44 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
                 return Err(syn::Error::new(attr.meta.span(), "invalid content"));
             }
         };
-        let attr : BuilderAttr = attr.parse_args()?;
+        let attr : BuilderFieldAttrs = attr.parse_args()?;
         match attr{
-            BuilderAttr::Type(typ) => {ty = typ},
-            BuilderAttr::Skip => {skip = true},
-            BuilderAttr::Init(int) => {init = int},
-            BuilderAttr::Pass(ts) => {attrs.push(ts)},
+            BuilderFieldAttrs::Type(typ) => {ty = typ},
+            BuilderFieldAttrs::Skip => {skip = true},
+            BuilderFieldAttrs::Init(int) => {init = int},
+            BuilderFieldAttrs::Pass(ts) => {attrs.push(ts)},
         }
     }
 
-    let attrs = Vec::new();
     return Ok((BuilderField{
         init, ty, skip, ident, attrs
     }, o_field));
 }
 
-enum BuilderAttr{
+enum BuilderFieldAttrs{
     Skip,
     Init(Initer),
     Pass(TokenStream),
     Type(Type),
 }
 
-impl Parse for BuilderAttr{
+impl Parse for BuilderFieldAttrs{
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let ident : Ident = input.parse()?;
-        if ident.to_string() == "skip"{
+        let ident = input.parse::<Ident>()?.to_string();
+        if ident == "skip"{
             return Ok(Self::Skip);
         }
-        if ident.to_string() == "init"{
+        if ident == "init"{
             let _ : syn::token::Eq = input.parse()?;
             let tokens : TokenStream = input.parse()?;
             return Ok(Self::Init(Initer::Other(tokens)));
         }
-        if ident.to_string() == "pass"{
+        if ident == "pass"{
             let _ : syn::token::Eq = input.parse()?;
             let tokens : TokenStream = input.parse()?;
             return Ok(Self::Pass(tokens));
         }
-        if ident.to_string() == "ty"{
+        if ident == "ty"{
             let _ : syn::token::Eq = input.parse()?;
             let tokens : Type = input.parse()?;
             return Ok(Self::Type(tokens));
@@ -246,16 +260,16 @@ impl Parse for BuilderAttr{
 
 #[test]
 fn test_attr_args() {
-    let _ : BuilderAttr = parse2(quote! {
+    let _ : BuilderFieldAttrs = parse2(quote! {
         skip
     }).unwrap();
-    let _ : BuilderAttr = parse2(quote! {
+    let _ : BuilderFieldAttrs = parse2(quote! {
         init = String::from("test")
     }).unwrap();
-    let _ : BuilderAttr = parse2(quote! {
+    let _ : BuilderFieldAttrs = parse2(quote! {
         ty = Option<i32>
     }).unwrap();
-    let _ : BuilderAttr = parse2(quote! {
+    let _ : BuilderFieldAttrs = parse2(quote! {
         pass = serde(skip_serializing_if = "String::is_empty")
     }).unwrap();
 }
