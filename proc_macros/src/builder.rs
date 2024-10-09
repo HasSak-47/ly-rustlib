@@ -1,14 +1,33 @@
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
-use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, Attribute, Data, DeriveInput, Field, Fields, Ident, Meta, MetaList, MetaNameValue, Path, Type};
+use quote::{format_ident, quote, ToTokens};
+use syn::{parse::{Parse, ParseStream}, parse2, spanned::Spanned, Attribute, Data, DeriveInput, Field, Fields, Ident, Meta, MetaList, MetaNameValue, Path, Token, Type};
 
-enum BuilderAttrs{
+struct BuilderAttrs{
+    v: Vec<BuilderAttr>,
+}
+
+enum BuilderAttr{
     Name(Ident),
     Pass(TokenStream),
     SkipInit,
 }
 
 impl Parse for BuilderAttrs{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut v = Vec::new();
+        loop{
+            let at = input.parse()?;
+            v.push(at);
+            if !input.lookahead1().peek(Token![,]){
+                break
+            }
+            let _ : syn::token::Comma = input.parse()?;
+        }
+        return Ok(Self{v});
+    }
+}
+
+impl Parse for BuilderAttr{
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let ident = input.parse::<Ident>()?.to_string();
         if ident == "name"{
@@ -30,13 +49,26 @@ impl Parse for BuilderAttrs{
     }
 }
 
-pub fn parse_attr(attr: TokenStream) -> syn::Result<Ident>{
+fn parse_attr(attr: TokenStream) -> syn::Result<BuilderAttrs>{
     parse2(attr)
 }
 
 pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
     let mut di : DeriveInput = parse2(input)?;
-    let struct_name = parse_attr(attr)?;
+    let attrs = parse_attr(attr)?;
+
+    let mut p_attrs : Vec<TokenStream> = Vec::new();
+    let mut struct_name = format_ident!("{}Builder", di.ident);
+    let mut skip_init = false;
+
+    for attr in attrs.v{
+        match attr{
+            BuilderAttr::Name(name) => {struct_name = name},
+            BuilderAttr::SkipInit => {skip_init = true},
+            BuilderAttr::Pass(ts) => { p_attrs.push(ts) },
+
+        }
+    }
 
     let (b_fields, o_fields) : (Vec<_>, Vec<_>,) = match di.data.clone(){
         Data::Struct(s) =>{
@@ -70,17 +102,21 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
     let (initer, field) : (Vec<_>, Vec<_>,)= initer_field.into_iter().unzip();
     
 
+    let initer = if skip_init {TokenStream::new()} else{ quote!{
+        pub fn new() -> Self{
+            Self{ #(#initer)* }
+        }
+    }};
 
     let q = quote! {
         #di
+        #(#[#p_attrs])*
         struct #struct_name{
             #(#field),*
         }
 
         impl #struct_name {
-            pub fn new() -> Self{
-                Self{ #(#initer)* }
-            }
+            #initer
 
             #(#setter)*
         }
@@ -198,6 +234,7 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
     let mut init = Initer::Default;
     let mut attrs = Vec::new();
 
+    let mut g_attrs = Vec::new();
     for attr in b_attrs{
         if let syn::AttrStyle::Inner(_) = attr.style{
             // todo: change to err
@@ -210,28 +247,50 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
                 return Err(syn::Error::new(attr.meta.span(), "invalid content"));
             }
         };
-        let attr : BuilderFieldAttrs = attr.parse_args()?;
-        match attr{
-            BuilderFieldAttrs::Type(typ) => {ty = typ},
-            BuilderFieldAttrs::Skip => {skip = true},
-            BuilderFieldAttrs::Init(int) => {init = int},
-            BuilderFieldAttrs::Pass(ts) => {attrs.push(ts)},
-        }
+        let mut attr : BuilderFieldAttrs = attr.parse_args()?;
+        g_attrs.append(&mut attr.v);
     }
 
+    for attr in g_attrs{
+        match attr{
+            BuilderFieldAttr::Type(typ) => {ty = typ},
+            BuilderFieldAttr::Skip => {skip = true},
+            BuilderFieldAttr::Init(int) => {init = int},
+            BuilderFieldAttr::Pass(ts) => {attrs.push(ts)},
+        }
+    }
     return Ok((BuilderField{
         init, ty, skip, ident, attrs
     }, o_field));
 }
 
-enum BuilderFieldAttrs{
+struct BuilderFieldAttrs{
+    v: Vec<BuilderFieldAttr>,
+}
+
+impl Parse for BuilderFieldAttrs{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut v = Vec::new();
+        loop{
+            let at = input.parse()?;
+            v.push(at);
+            if !input.lookahead1().peek(Token![,]){
+                break
+            }
+            let _ : syn::token::Comma = input.parse()?;
+        }
+        return Ok(Self{v});
+    }
+}
+
+enum BuilderFieldAttr{
     Skip,
     Init(Initer),
     Pass(TokenStream),
     Type(Type),
 }
 
-impl Parse for BuilderFieldAttrs{
+impl Parse for BuilderFieldAttr{
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let ident = input.parse::<Ident>()?.to_string();
         if ident == "skip"{
@@ -260,16 +319,16 @@ impl Parse for BuilderFieldAttrs{
 
 #[test]
 fn test_attr_args() {
-    let _ : BuilderFieldAttrs = parse2(quote! {
+    let _ : BuilderFieldAttr = parse2(quote! {
         skip
     }).unwrap();
-    let _ : BuilderFieldAttrs = parse2(quote! {
+    let _ : BuilderFieldAttr = parse2(quote! {
         init = String::from("test")
     }).unwrap();
-    let _ : BuilderFieldAttrs = parse2(quote! {
+    let _ : BuilderFieldAttr = parse2(quote! {
         ty = Option<i32>
     }).unwrap();
-    let _ : BuilderFieldAttrs = parse2(quote! {
+    let _ : BuilderFieldAttr = parse2(quote! {
         pass = serde(skip_serializing_if = "String::is_empty")
     }).unwrap();
 }

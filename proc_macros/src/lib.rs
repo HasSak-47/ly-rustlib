@@ -9,21 +9,31 @@ pub fn builder(attr: proc_macro::TokenStream ,input: proc_macro::TokenStream) ->
 #[test]
 fn test_macro_quote() {
     use quote::quote;
-    use prettyplease;
-    let out = builder::builder(
-        quote!{Name},
-    quote!{
+    use prettyplease::unparse;
+
+    let attrs = quote!{name = Test, pass = derive(Debug, Default)};
+    let original = quote!{
+    #[derive(Debug, Default, Clone)]
     struct TestStruct{
         #[builder(skip)]
-        #[builder(init = 10)]
         id1 : usize,
         #[builder(init = String::from("test"))]
         data : String,
-        #[builder(ty = Option<i32>)]
+        #[builder(ty = Option<i32>, init = Some(10))]
         id2: usize,
         #[builder(pass = serde(skip_serializing_if = "String::is_empty"))]
         string: String,
-    }}).unwrap();
+    }};
 
-    let out = syn::parse_file(&out.to_string()).unwrap();
+    let out = builder::builder(
+        attrs, original.clone()
+    ).unwrap();
+
+    let os = unparse(&syn::parse_file(&original.to_string()).unwrap());
+    let out = unparse(&syn::parse_file(&out.to_string()).unwrap());
+    println!("original:\n{os}");
+    println!("parsed:\n{out}");
 }
+
+
+
