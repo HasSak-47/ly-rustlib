@@ -1,10 +1,8 @@
 pub mod write;
 pub mod prelude{
-    pub use super::*;
-    pub use super::write::*;
-    pub use crate::marco_warn as warn;
-    pub use crate::marco_error as error;
-    pub use crate::marco_log as log;
+    pub use crate::log::*;
+    pub use crate::log::write::*;
+    pub use crate::log::macros::*;
 }
 
 use std::{cmp, io, sync::{Arc, Mutex, OnceLock}};
@@ -85,35 +83,36 @@ pub fn write(msg: String, level: Level) -> io::Result<()>{
     }
 }
 
-// damn rust this kinda sucks
+// damn rust, this kinda sucks
 pub mod macros{
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! marco_log {
+    macro_rules! macro_log {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::log(format!($fmt $(,$params)*))
+            log_f(format!($fmt $(,$params)*))
         };
     }
     
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! marco_error {
+    macro_rules! macro_error {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::error (format!($fmt $(,$params)*))
+            error_f(format!($fmt $(,$params)*))
         };
     }
 
     #[macro_export]
-    #[doc(hidden)]
-    macro_rules! marco_warn {
+    macro_rules! macro_warn {
         ($fmt: tt $(, $params: expr)*) => {
-            super::log::warn(format!($fmt $(,$params)*))
+            warn_f(format!($fmt $(,$params)*))
         };
     }
+
+    pub use crate::macro_warn as warn;
+    pub use crate::macro_error as error;
+    pub use crate::macro_log as log;
 }
 
-pub fn   log(msg: String) -> io::Result<()> { write(msg, Level::Log) }
-pub fn  warn(msg: String) -> io::Result<()> { write(msg, Level::Warning) }
-pub fn error(msg: String) -> io::Result<()> { write(msg, Level::Error) }
+pub fn   log_f(msg: String) -> io::Result<()> { write(msg, Level::Log) }
+pub fn  warn_f(msg: String) -> io::Result<()> { write(msg, Level::Warning) }
+pub fn error_f(msg: String) -> io::Result<()> { write(msg, Level::Error) }
 
 
