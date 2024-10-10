@@ -11,19 +11,24 @@ fn test_macro_quote() {
     use quote::quote;
     use prettyplease::unparse;
 
-    let attrs = quote!{name = Builder, pass = derive(Debug, Default)};
+    let attrs = quote!{name = Builder, pass = derive(Debug, Default, Serialize, Deserialize)};
     let original = quote!{
     #[derive(Debug, Default, Clone)]
-    struct Table{
-        #[builder(skip)]
-        id1 : usize,
-        #[builder(init = String::from("test"))]
-        data : String,
-        #[builder(skip_table, ty = Option<i32>, init = Some(10))]
-        id2: usize,
-        #[builder(pass = serde(skip_serializing_if = "String::is_empty"))]
-        string: String,
-    }};
+struct Table{
+    #[builder(skip)]
+    id: usize,
+    #[builder(skip_table)]
+    ident: String,
+
+    #[builder(ty = String, pass = serde(skip_serializing_if = "String::is_empty"))]
+    parent: Option<usize>,
+
+    #[builder(init = String::from("data"))]
+    data: String,
+
+    #[builder(skip_setter)]
+    complicated: String,
+}};
 
     let out = builder::builder(
         attrs, original.clone()

@@ -154,7 +154,6 @@ struct BuilderField{
 
 impl BuilderField{
     fn make_initer(&self) -> TokenStream{
-        if self.skip { return TokenStream::new(); }
         let ident = &self.ident;
         let init  = &self.init;
         quote! {
@@ -162,7 +161,9 @@ impl BuilderField{
         }
     }
     fn make_setter(&self) -> TokenStream{
-        if self.skip { return TokenStream::new(); }
+        if self.skip {
+            return TokenStream::new();
+        }
         let ident = &self.ident;
         let ty    = &self.ty;
         quote! {
@@ -173,7 +174,6 @@ impl BuilderField{
         }
     }
     fn make_field(&self) -> TokenStream{
-        if self.skip { return TokenStream::new(); }
         let attrs = &self.attrs;
         let ident = &self.ident;
         let ty    = &self.ty;
@@ -229,13 +229,11 @@ fn split(f: Field) -> syn::Result<(Option<BuilderField>, Option<Field>)>{
 
     o_field.attrs = o_attrs;
 
-    let mut ty = f.ty;
-    let mut skip_builder = false;
-    let mut skip_table = false;
-    let mut init = Initer::Default;
-    let mut attrs = Vec::new();
+    let ty = f.ty;
+    let init = Initer::Default;
+    let attrs = Vec::new();
 
-    let mut builder = Some(BuilderField{ident, ty, skip: skip_builder, init, attrs});
+    let mut builder = Some(BuilderField{ident, ty, skip: false, init, attrs});
     let mut table = Some(o_field);
 
     let mut g_attrs = Vec::new();
@@ -272,6 +270,10 @@ fn split(f: Field) -> syn::Result<(Option<BuilderField>, Option<Field>)>{
             BuilderFieldAttr::SkipTable => {
                 table = None;
             }
+            BuilderFieldAttr::SkipSetter=> {
+                builder.as_mut().and_then(|p| Some(p.skip = true));
+            }
+
         }
     }
     return Ok((builder, table));
@@ -299,6 +301,7 @@ impl Parse for BuilderFieldAttrs{
 enum BuilderFieldAttr{
     Skip,
     SkipTable,
+    SkipSetter,
     Init(Initer),
     Pass(TokenStream),
     Type(Type),
@@ -309,6 +312,9 @@ impl Parse for BuilderFieldAttr{
         let ident = input.parse::<Ident>()?.to_string();
         if ident == "skip"{
             return Ok(Self::Skip);
+        }
+        if ident == "skip_setter"{
+            return Ok(Self::SkipSetter);
         }
         if ident == "skip_table"{
             return Ok(Self::SkipTable);
