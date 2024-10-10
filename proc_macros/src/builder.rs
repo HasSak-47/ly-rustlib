@@ -80,8 +80,8 @@ pub fn builder(attr: TokenStream, input: TokenStream) -> syn::Result<TokenStream
         },
         _ => { return Err(syn::Error::new(di.span(), "not implemented for this data type")); }
     }.into_iter().unzip();
-    let b_fields = b_fields.into_iter().filter(|f| !f.skip);
-
+    let b_fields = b_fields.into_iter().filter(Option::is_some).map(Option::unwrap);
+    let o_fields = o_fields.into_iter().filter(Option::is_some).map(Option::unwrap);
 
     if let Data::Struct(v) = &mut di.data {
         if let Fields::Named(named) = &mut v.fields{
@@ -206,7 +206,7 @@ fn get_path(attr: &Attribute) -> &Path{
  *
  * returns (BuilderField, Original Field)
  */
-fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
+fn split(f: Field) -> syn::Result<(Option<BuilderField>, Option<Field>)>{
     let mut o_field = f.clone();
 
     let mut o_attrs = Vec::new();
@@ -230,9 +230,13 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
     o_field.attrs = o_attrs;
 
     let mut ty = f.ty;
-    let mut skip = false;
+    let mut skip_builder = false;
+    let mut skip_table = false;
     let mut init = Initer::Default;
     let mut attrs = Vec::new();
+
+    let mut builder = Some(BuilderField{ident, ty, skip: skip_builder, init, attrs});
+    let mut table = Some(o_field);
 
     let mut g_attrs = Vec::new();
     for attr in b_attrs{
@@ -253,15 +257,24 @@ fn split(f: Field) -> syn::Result<(BuilderField, Field)>{
 
     for attr in g_attrs{
         match attr{
-            BuilderFieldAttr::Type(typ) => {ty = typ},
-            BuilderFieldAttr::Skip => {skip = true},
-            BuilderFieldAttr::Init(int) => {init = int},
-            BuilderFieldAttr::Pass(ts) => {attrs.push(ts)},
+            BuilderFieldAttr::Type(typ) => {
+                builder.as_mut().and_then(|p| Some(p.ty = typ));
+            },
+            BuilderFieldAttr::Skip => {
+                builder = None;
+            },
+            BuilderFieldAttr::Init(int) => {
+                builder.as_mut().and_then(|p| Some(p.init = int));
+            },
+            BuilderFieldAttr::Pass(ts) => {
+                builder.as_mut().and_then(|p| Some(p.attrs.push(ts)));
+            },
+            BuilderFieldAttr::SkipTable => {
+                table = None;
+            }
         }
     }
-    return Ok((BuilderField{
-        init, ty, skip, ident, attrs
-    }, o_field));
+    return Ok((builder, table));
 }
 
 struct BuilderFieldAttrs{
@@ -285,6 +298,7 @@ impl Parse for BuilderFieldAttrs{
 
 enum BuilderFieldAttr{
     Skip,
+    SkipTable,
     Init(Initer),
     Pass(TokenStream),
     Type(Type),
@@ -295,6 +309,9 @@ impl Parse for BuilderFieldAttr{
         let ident = input.parse::<Ident>()?.to_string();
         if ident == "skip"{
             return Ok(Self::Skip);
+        }
+        if ident == "skip_table"{
+            return Ok(Self::SkipTable);
         }
         if ident == "init"{
             let _ : syn::token::Eq = input.parse()?;
